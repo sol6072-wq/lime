@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lime_bg">#F4FBE8</color>
+    <color name="icon_bg">#C9EE8F</color>
+
+    <style name="Theme.Lime" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/lime_bg</item>
+        <item name="android:statusBarColor">@color/lime_bg</item>
+        <item name="android:navigationBarColor">@color/lime_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 꼬리 -->
+    <path android:fillColor="#2E7DAF" android:pathData="M44,70 L36,90 L42,91 L52,72 Z" />
+    <!-- 몸통 -->
+    <path android:fillColor="#7CCB3A" android:pathData="M32,64 a20,22 0 1,0 40,0 a20,22 0 1,0 -40,0 z" />
+    <!-- 날개 -->
+    <path android:fillColor="#4E9A2A" android:pathData="M38,58 Q46,52 56,64 Q50,80 40,76 Q33,68 38,58 Z" />
+    <!-- 얼굴 -->
+    <path android:fillColor="#F7E15A" android:pathData="M43,46 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0 z" />
+    <!-- 볼 -->
+    <path android:fillColor="#3F6FD8" android:pathData="M59,56 a2.4,2.4 0 1,0 4.8,0 a2.4,2.4 0 1,0 -4.8,0 z" />
+    <!-- 눈 -->
+    <path android:fillColor="#FFFFFF" android:pathData="M58,43 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z" />
+    <path android:fillColor="#1B1B1B" android:pathData="M59,43 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M62.4,41.8 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0 z" />
+    <!-- 코 (납막) -->
+    <path android:fillColor="#6FA8E8" android:pathData="M67,47 a3,2 0 1,0 6,0 a3,2 0 1,0 -6,0 z" />
+    <!-- 부리 -->
+    <path android:fillColor="#F2C46B" android:pathData="M68,49 Q78,51 73,60 Q69,56 68,49 Z" />
+</vector>
