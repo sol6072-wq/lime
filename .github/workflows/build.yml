@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,3 +32,14 @@ jobs:
         with:
           name: LimeTranslator-apk
           path: LimeTranslator.apk
+
+      - name: 릴리즈에 APK 올리기
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: 라임이 통역기 v1.0.${{ github.run_number }}
+          body: |
+            🦜 라임이 통역기 APK
+            아래 LimeTranslator.apk를 눌러 받아서 설치하세요.
+          files: LimeTranslator.apk
+          make_latest: true
