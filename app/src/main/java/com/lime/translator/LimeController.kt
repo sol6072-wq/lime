@@ -272,17 +272,12 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun translateToParrot(text: String, voice: ShortArray?) {
-        addChat(Sender.ME, text)
         val mood = MoodClassifier.classify(text)
         val seed = System.nanoTime()
         val clips = sounds.filter { it.mood == mood }
         if (clips.isNotEmpty()) {
             val clip = clips.random()
-            addChat(
-                Sender.LIME,
-                ChirpSynth.words(clip.durationMs.toInt().coerceAtLeast(600), seed),
-                "${mood.emoji} ${mood.label} · 라임이 진짜 목소리 '${clip.name}'"
-            )
+            addChat(Sender.ME, text, "🦜 라임이 말로 전함 · ${mood.emoji} ${mood.label} · 녹음 '${clip.name}'")
             mode = Mode.LIME_TALKING
             status = "라임이 말로 바꾸는 중…"
             player.playFile(store.soundFile(clip)) { finishTalking() }
@@ -290,11 +285,7 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
             val ms = ChirpSynth.targetMs(text)
             val usedVoice = ChirpSynth.hasVoice(voice)
             val pcm = ChirpSynth.synth(if (usedVoice) voice else null, ms, seed)
-            addChat(
-                Sender.LIME,
-                ChirpSynth.words(ms, seed),
-                "${mood.emoji} ${mood.label} · ${if (usedVoice) "내 목소리로 만든 지저귐" else "합성 지저귐"}"
-            )
+            addChat(Sender.ME, text, "🦜 라임이 말로 전함 · ${mood.emoji} ${mood.label} · ${if (usedVoice) "내 목소리 지저귐" else "합성 지저귐"}")
             mode = Mode.LIME_TALKING
             status = "라임이 말로 바꾸는 중…"
             player.playPcm(pcm, ChirpSynth.OUT_SR) { finishTalking() }

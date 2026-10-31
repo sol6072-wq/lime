@@ -285,7 +285,7 @@ private fun Bubble(m: ChatMessage) {
             fontSize = 13.sp
         )
 
-        Sender.ME -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Sender.ME -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
             Surface(
                 shape = RoundedCornerShape(20.dp, 6.dp, 20.dp, 20.dp),
                 color = Color.White,
@@ -293,6 +293,9 @@ private fun Bubble(m: ChatMessage) {
                 modifier = Modifier.widthIn(max = 280.dp)
             ) {
                 Text(m.text, Modifier.padding(horizontal = 14.dp, vertical = 10.dp), fontSize = 16.sp)
+            }
+            if (m.sub != null) {
+                Text(m.sub, fontSize = 11.sp, color = InkSoft, modifier = Modifier.padding(top = 3.dp, end = 6.dp))
             }
         }
 
