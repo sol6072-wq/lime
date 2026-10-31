@@ -195,10 +195,15 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
             if (mode != Mode.HEARING_ME) return
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 ?.trim().orEmpty().ifBlank { partial }
+            val hadCapture = capturing
             val voice = stopVoiceCapture()
             destroyRecognizer()
             partial = ""
             mode = Mode.IDLE
+            if (text.isBlank() && hadCapture) {
+                fallBackWithoutCapture()
+                return
+            }
             if (text.isBlank()) {
                 status = "잘 못 들었어요. 다시 말해 볼까요?"
             } else {
@@ -214,12 +219,15 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
             mode = Mode.IDLE
             val p = partial
             partial = ""
-            if (hadCapture && (error == SpeechRecognizer.ERROR_AUDIO || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY)) {
-                // 이 폰은 음성인식 중 동시 녹음이 안 됨 → 녹음 없이 다시 시도
-                voiceConflict = true
-                store.voiceConflict = true
-                status = "이 폰은 동시 녹음이 안 돼서 합성 소리로 바꿨어요. 다시 말해 주세요"
-                main.postDelayed({ if (mode == Mode.IDLE) startTalk() }, 300)
+            if (hadCapture && p.isBlank() && error in listOf(
+                    SpeechRecognizer.ERROR_AUDIO,
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+                    SpeechRecognizer.ERROR_NO_MATCH,
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                )
+            ) {
+                // 내 목소리 녹음이 마이크를 가져가서 음성인식이 아무것도 못 들은 경우
+                fallBackWithoutCapture()
                 return
             }
             if (p.isNotBlank() && (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
@@ -227,13 +235,26 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
                 return
             }
             status = when (error) {
-                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "잘 못 들었어요. 다시 말해 볼까요?"
+                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "잘 못 들었어요. 다시 말해 볼까요? (코드 $error)"
                 SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "인터넷 연결을 확인해 주세요 (음성인식에 필요할 수 있어요)"
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "마이크 권한을 허용해 주세요"
                 SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "음성인식이 바빠요. 잠시 후 다시 눌러 주세요"
                 else -> "음성인식 오류($error). 다시 눌러 주세요"
             }
         }
+    }
+
+    /** 이 폰은 음성인식과 내 목소리 녹음을 동시에 못 함 → 녹음 끄고 바로 다시 듣기 */
+    private fun fallBackWithoutCapture() {
+        voiceConflict = true
+        store.voiceConflict = true
+        status = "다시 한 번 말해 주세요 (이 폰은 합성 지저귐으로 들려줄게요)"
+        main.postDelayed({
+            if (mode == Mode.IDLE) {
+                startTalk()
+                status = "다시 한 번 말해 주세요 (이 폰은 합성 지저귐으로 들려줄게요)"
+            }
+        }, 300)
     }
 
     private fun stopVoiceCapture(): ShortArray? {
