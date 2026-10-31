@@ -8,7 +8,13 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -92,8 +98,9 @@ fun LimeTheme(content: @Composable () -> Unit) {
 
 // ======================= 메인 화면 =======================
 @Composable
-fun MainScreen(c: LimeController, withMic: (() -> Unit) -> Unit) {
+fun MainScreen(c: LimeController, withMic: (() -> Unit) -> Unit, onPickPhoto: () -> Unit) {
     var askClear by remember { mutableStateOf(false) }
+    var askPhoto by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(c.chat.size) {
@@ -106,9 +113,6 @@ fun MainScreen(c: LimeController, withMic: (() -> Unit) -> Unit) {
             CenterAlignedTopAppBar(
                 title = { Text("라임이 통역기", fontWeight = FontWeight.Bold, color = LimeDeep) },
                 actions = {
-                    IconButton(onClick = { c.cancelAll(); c.screen = Screen.SOUNDS }) {
-                        Icon(Icons.Filled.List, contentDescription = "라임이 소리 모음", tint = LimeDeep)
-                    }
                     IconButton(onClick = { askClear = true }) {
                         Icon(Icons.Filled.Delete, contentDescription = "기록 지우기", tint = InkSoft)
                     }
@@ -131,16 +135,43 @@ fun MainScreen(c: LimeController, withMic: (() -> Unit) -> Unit) {
             ) {
                 Box(
                     Modifier
-                        .size(180.dp)
-                        .clip(CircleShape)
-                        .background(LimeSoft)
-                )
-                Parrot(
-                    talking = c.mode == Mode.LIME_TALKING,
-                    listening = c.mode == Mode.HEARING_ME || c.mode == Mode.LISTENING_LIME,
-                    level = c.level,
-                    modifier = Modifier.size(185.dp)
-                )
+                        .size(185.dp)
+                        .clickable { askPhoto = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier
+                            .size(180.dp)
+                            .clip(CircleShape)
+                            .background(LimeSoft)
+                    )
+                    val photo = c.avatar
+                    if (photo != null) {
+                        PhotoParrot(
+                            img = photo,
+                            talking = c.mode == Mode.LIME_TALKING,
+                            listening = c.mode == Mode.HEARING_ME || c.mode == Mode.LISTENING_LIME,
+                            modifier = Modifier.size(172.dp)
+                        )
+                    } else {
+                        Parrot(
+                            talking = c.mode == Mode.LIME_TALKING,
+                            listening = c.mode == Mode.HEARING_ME || c.mode == Mode.LISTENING_LIME,
+                            level = c.level,
+                            modifier = Modifier.size(185.dp)
+                        )
+                    }
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 3.dp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(42.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) { Text("📷", fontSize = 18.sp) }
+                    }
+                }
             }
             Text(
                 c.status,
@@ -188,7 +219,7 @@ fun MainScreen(c: LimeController, withMic: (() -> Unit) -> Unit) {
                         Text(
                             "🎤 라임이한테 말하기: 내가 한 말을 라임이 소리로 바꿔줘요\n" +
                                 "👂 라임이 말 듣기: 라임이 소리를 한국어로 바꿔줘요\n" +
-                                "📋 오른쪽 위 목록 버튼에서 라임이 진짜 소리를 녹음해 둘 수 있어요",
+                                "📷 위의 라임이 그림을 누르면 사진으로 바꿀 수 있어요",
                             Modifier.padding(12.dp),
                             color = InkSoft,
                             fontSize = 14.sp,
@@ -196,7 +227,7 @@ fun MainScreen(c: LimeController, withMic: (() -> Unit) -> Unit) {
                         )
                     }
                 }
-                items(c.chat, key = { it.id }) { m -> Bubble(m) }
+                items(c.chat, key = { it.id }) { m -> Bubble(m, c.avatar) }
             }
 
             Row(
@@ -227,11 +258,55 @@ fun MainScreen(c: LimeController, withMic: (() -> Unit) -> Unit) {
         AlertDialog(
             onDismissRequest = { askClear = false },
             title = { Text("대화 기록 지우기") },
-            text = { Text("라임이와 나눈 대화 기록을 모두 지울까요? (녹음한 라임이 소리는 그대로 남아요)") },
+            text = { Text("라임이와 나눈 대화 기록을 모두 지울까요?") },
             confirmButton = { TextButton(onClick = { c.clearChat(); askClear = false }) { Text("지우기") } },
             dismissButton = { TextButton(onClick = { askClear = false }) { Text("취소") } }
         )
     }
+
+    if (askPhoto) {
+        AlertDialog(
+            onDismissRequest = { askPhoto = false },
+            title = { Text("라임이 사진") },
+            text = { Text("라임이 사진을 골라서 그림 대신 보여줄 수 있어요.") },
+            confirmButton = {
+                TextButton(onClick = { askPhoto = false; onPickPhoto() }) { Text("사진 고르기") }
+            },
+            dismissButton = {
+                Row {
+                    if (c.avatar != null) {
+                        TextButton(onClick = { askPhoto = false; c.resetAvatar() }) { Text("기본 그림으로") }
+                    }
+                    TextButton(onClick = { askPhoto = false }) { Text("취소") }
+                }
+            }
+        )
+    }
+}
+
+/** 업로드한 라임이 사진 (말할 때 통통 튀고, 들을 때 갸웃) */
+@Composable
+fun PhotoParrot(img: ImageBitmap, talking: Boolean, listening: Boolean, modifier: Modifier = Modifier) {
+    val inf = rememberInfiniteTransition(label = "photo")
+    val hop by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(160), RepeatMode.Reverse), label = "hop")
+    val wig by inf.animateFloat(-1f, 1f, infiniteRepeatable(tween(240), RepeatMode.Reverse), label = "wig")
+    val breathe by inf.animateFloat(1f, 1.03f, infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "breathe")
+    val tilt by animateFloatAsState(if (listening) -10f else 0f, label = "tilt")
+    Image(
+        bitmap = img,
+        contentDescription = "라임이",
+        contentScale = ContentScale.Crop,
+        modifier = modifier
+            .graphicsLayer {
+                val sc = if (talking) 1f + hop * 0.06f else breathe
+                scaleX = sc
+                scaleY = sc
+                rotationZ = tilt + if (talking) wig * 5f else 0f
+                translationY = if (talking) -hop * 8f else 0f
+            }
+            .clip(CircleShape)
+            .border(4.dp, LimeMain, CircleShape)
+    )
 }
 
 @Composable
@@ -273,7 +348,7 @@ private fun BigButton(
 }
 
 @Composable
-private fun Bubble(m: ChatMessage) {
+private fun Bubble(m: ChatMessage, avatar: ImageBitmap?) {
     when (m.sender) {
         Sender.SYSTEM -> Text(
             m.text,
@@ -294,9 +369,6 @@ private fun Bubble(m: ChatMessage) {
             ) {
                 Text(m.text, Modifier.padding(horizontal = 14.dp, vertical = 10.dp), fontSize = 16.sp)
             }
-            if (m.sub != null) {
-                Text(m.sub, fontSize = 11.sp, color = InkSoft, modifier = Modifier.padding(top = 3.dp, end = 6.dp))
-            }
         }
 
         Sender.LIME -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -306,7 +378,20 @@ private fun Bubble(m: ChatMessage) {
                     .clip(CircleShape)
                     .background(LimeSoft),
                 contentAlignment = Alignment.Center
-            ) { Text("🦜", fontSize = 20.sp) }
+            ) {
+                if (avatar != null) {
+                    Image(
+                        bitmap = avatar,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                    )
+                } else {
+                    Text("🦜", fontSize = 20.sp)
+                }
+            }
             Spacer(Modifier.size(8.dp))
             Column {
                 Text("라임이", fontSize = 12.sp, color = LimeDeep, fontWeight = FontWeight.Bold)
@@ -317,9 +402,6 @@ private fun Bubble(m: ChatMessage) {
                 ) {
                     Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                         Text(m.text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                        if (m.sub != null) {
-                            Text(m.sub, fontSize = 11.sp, color = InkSoft, modifier = Modifier.padding(top = 4.dp))
-                        }
                     }
                 }
             }
@@ -327,229 +409,3 @@ private fun Bubble(m: ChatMessage) {
     }
 }
 
-// ======================= 라임이 소리 모음 =======================
-@Composable
-fun SoundsScreen(c: LimeController, withMic: (() -> Unit) -> Unit) {
-    BackHandler { c.cancelAll(); c.screen = Screen.MAIN }
-    var editing by remember { mutableStateOf<SoundClip?>(null) }
-    var deleting by remember { mutableStateOf<SoundClip?>(null) }
-
-    Scaffold(
-        containerColor = LimeBg,
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("라임이 소리 모음", fontWeight = FontWeight.Bold, color = LimeDeep) },
-                navigationIcon = {
-                    IconButton(onClick = { c.cancelAll(); c.screen = Screen.MAIN }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "뒤로", tint = LimeDeep)
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = LimeBg)
-            )
-        }
-    ) { pad ->
-        LazyColumn(
-            Modifier
-                .padding(pad)
-                .fillMaxSize()
-                .navigationBarsPadding(),
-            contentPadding = PaddingValues(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            item {
-                Text(
-                    "라임이 소리를 녹음하고 분위기를 붙여 두면, 그 분위기의 말을 할 때 라임이 진짜 목소리로 들려줘요.",
-                    color = InkSoft, fontSize = 14.sp, lineHeight = 21.sp
-                )
-            }
-            item {
-                Surface(
-                    onClick = { withMic { c.toggleClipRecording() } },
-                    shape = RoundedCornerShape(26.dp),
-                    color = if (c.clipRecording) Color(0xFFE5534B) else LimeDeep,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(72.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            if (c.clipRecording) "⏹ 녹음 멈추기" else "⏺ 라임이 소리 녹음하기 (최대 10초)",
-                            color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp
-                        )
-                    }
-                }
-                if (c.clipRecording) {
-                    LinearProgressIndicator(
-                        progress = { c.level },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = LimeMain,
-                        trackColor = LimeSoft
-                    )
-                }
-            }
-            item {
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                    Row(
-                        Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("합성 지저귐에 내 목소리 섞기", fontWeight = FontWeight.SemiBold)
-                            Text(
-                                if (c.voiceConflict) "이 폰은 음성인식 중 동시 녹음이 안 돼서 합성 소리만 써요. 껐다 켜면 다시 시도해요."
-                                else "녹음이 없는 분위기일 때, 내 목소리를 높고 짧게 바꿔서 지저귀게 해요.",
-                                fontSize = 12.sp, color = InkSoft
-                            )
-                        }
-                        Switch(checked = c.useMyVoice && !c.voiceConflict, onCheckedChange = { c.setUseMyVoiceOption(it) })
-                    }
-                }
-            }
-            item {
-                Text(
-                    Mood.entries.joinToString("   ") { m -> "${m.emoji}${m.label} ${c.sounds.count { it.mood == m }}" },
-                    fontSize = 13.sp, color = InkSoft, modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            if (c.sounds.isEmpty()) {
-                item {
-                    Text(
-                        "아직 녹음한 소리가 없어요. 라임이가 지저귈 때 녹음 버튼을 눌러 보세요!",
-                        Modifier.padding(vertical = 20.dp),
-                        color = InkSoft
-                    )
-                }
-            }
-            items(c.sounds, key = { it.id }) { clip ->
-                ClipRow(
-                    clip = clip,
-                    playing = c.playingClipId == clip.id,
-                    onPlay = { c.playClip(clip) },
-                    onEdit = { editing = clip },
-                    onDelete = { deleting = clip }
-                )
-            }
-        }
-    }
-
-    c.pendingClip?.let { pcm ->
-        ClipDialog(
-            title = "새 라임이 소리 저장",
-            initialName = "라임이 소리 ${c.sounds.size + 1}",
-            initialMood = Mood.GREETING,
-            info = "길이 ${"%.1f".format(pcm.size / SAMPLE_RATE.toFloat())}초",
-            onPreview = { c.previewPending() },
-            onConfirm = { name, mood -> c.savePending(name, mood) },
-            onDismiss = { c.discardPending() },
-            dismissLabel = "버리기"
-        )
-    }
-    editing?.let { clip ->
-        ClipDialog(
-            title = "소리 정보 바꾸기",
-            initialName = clip.name,
-            initialMood = clip.mood,
-            info = null,
-            onPreview = { c.playClip(clip) },
-            onConfirm = { name, mood -> c.updateClip(clip, name, mood); editing = null },
-            onDismiss = { editing = null },
-            dismissLabel = "취소"
-        )
-    }
-    deleting?.let { clip ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("소리 삭제") },
-            text = { Text("'${clip.name}'을(를) 삭제할까요?") },
-            confirmButton = { TextButton(onClick = { c.deleteClip(clip); deleting = null }) { Text("삭제") } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("취소") } }
-        )
-    }
-}
-
-@Composable
-private fun ClipRow(
-    clip: SoundClip,
-    playing: Boolean,
-    onPlay: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(18.dp)) {
-        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(if (playing) Sunny else LimeSoft)
-                    .clickable { onPlay() },
-                contentAlignment = Alignment.Center
-            ) {
-                if (playing) Text("⏹", fontSize = 18.sp)
-                else Icon(Icons.Filled.PlayArrow, contentDescription = "듣기", tint = LimeDeep)
-            }
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp)
-            ) {
-                Text(clip.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Text(
-                    "${clip.mood.emoji} ${clip.mood.label} · ${"%.1f".format(clip.durationMs / 1000f)}초",
-                    fontSize = 12.sp, color = InkSoft
-                )
-            }
-            IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, contentDescription = "이름·분위기 바꾸기", tint = InkSoft) }
-            IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "삭제", tint = InkSoft) }
-        }
-    }
-}
-
-@Composable
-private fun ClipDialog(
-    title: String,
-    initialName: String,
-    initialMood: Mood,
-    info: String?,
-    onPreview: () -> Unit,
-    onConfirm: (String, Mood) -> Unit,
-    onDismiss: () -> Unit,
-    dismissLabel: String
-) {
-    var name by remember { mutableStateOf(initialName) }
-    var mood by remember { mutableStateOf(initialMood) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (info != null) Text(info, color = InkSoft, fontSize = 13.sp)
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.take(30) },
-                    label = { Text("이름") },
-                    singleLine = true
-                )
-                Text("분위기", fontWeight = FontWeight.SemiBold)
-                Mood.entries.chunked(3).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        row.forEach { m ->
-                            FilterChip(
-                                selected = mood == m,
-                                onClick = { mood = m },
-                                label = { Text("${m.emoji} ${m.label}") }
-                            )
-                        }
-                    }
-                }
-                TextButton(onClick = onPreview) { Text("▶ 들어보기") }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onConfirm(name.trim(), mood) }) { Text("저장") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(dismissLabel) } }
-    )
-}

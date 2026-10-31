@@ -10,6 +10,13 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +25,6 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.max
 
-enum class Screen { MAIN, SOUNDS }
 enum class Mode { IDLE, HEARING_ME, LISTENING_LIME, LIME_TALKING }
 
 private const val IDLE_STATUS = "버튼을 눌러 라임이와 이야기해 보세요"
@@ -27,7 +33,6 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
     val store = Store(ctx)
     private val main = Handler(Looper.getMainLooper())
 
-    var screen by mutableStateOf(Screen.MAIN)
     var mode by mutableStateOf(Mode.IDLE)
         private set
     var status by mutableStateOf(IDLE_STATUS)
@@ -41,14 +46,8 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
         private set
 
     val chat = mutableStateListOf<ChatMessage>()
-    val sounds = mutableStateListOf<SoundClip>()
 
-    // 라임이 소리 녹음 (소리 모음 화면)
-    var clipRecording by mutableStateOf(false)
-        private set
-    var pendingClip by mutableStateOf<ShortArray?>(null)
-        private set
-    var playingClipId by mutableStateOf<Long?>(null)
+    var avatar by mutableStateOf<ImageBitmap?>(null)
         private set
 
     private var tts: TextToSpeech? = null
@@ -56,16 +55,15 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
     private var recognizer: SpeechRecognizer? = null
     private val voiceCap = PcmRecorder()
     private val limeRec = PcmRecorder()
-    private val clipRec = PcmRecorder()
     private val player = SoundPlayer()
     private var capturing = false
     private var nextId: Long
 
     private val levelPoll = object : Runnable {
         override fun run() {
-            val l = max(max(voiceCap.level, limeRec.level), clipRec.level)
-            if (capturing || limeRec.isRunning || clipRec.isRunning) level = l
-            if (mode == Mode.HEARING_ME || mode == Mode.LISTENING_LIME || clipRecording) {
+            val l = max(voiceCap.level, limeRec.level)
+            if (capturing || limeRec.isRunning) level = l
+            if (mode == Mode.HEARING_ME || mode == Mode.LISTENING_LIME) {
                 main.postDelayed(this, 80)
             } else {
                 level = 0f
@@ -75,8 +73,8 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
 
     init {
         chat.addAll(store.loadChat())
-        sounds.addAll(store.loadSounds())
         nextId = (chat.maxOfOrNull { it.id } ?: 0L) + 1
+        avatar = loadAvatarFile()
         tts = TextToSpeech(ctx, this)
     }
 
@@ -272,24 +270,13 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
     }
 
     private fun translateToParrot(text: String, voice: ShortArray?) {
-        val mood = MoodClassifier.classify(text)
-        val seed = System.nanoTime()
-        val clips = sounds.filter { it.mood == mood }
-        if (clips.isNotEmpty()) {
-            val clip = clips.random()
-            addChat(Sender.ME, text, "🦜 라임이 말로 전함 · ${mood.emoji} ${mood.label} · 녹음 '${clip.name}'")
-            mode = Mode.LIME_TALKING
-            status = "라임이 말로 바꾸는 중…"
-            player.playFile(store.soundFile(clip)) { finishTalking() }
-        } else {
-            val ms = ChirpSynth.targetMs(text)
-            val usedVoice = ChirpSynth.hasVoice(voice)
-            val pcm = ChirpSynth.synth(if (usedVoice) voice else null, ms, seed)
-            addChat(Sender.ME, text, "🦜 라임이 말로 전함 · ${mood.emoji} ${mood.label} · ${if (usedVoice) "내 목소리 지저귐" else "합성 지저귐"}")
-            mode = Mode.LIME_TALKING
-            status = "라임이 말로 바꾸는 중…"
-            player.playPcm(pcm, ChirpSynth.OUT_SR) { finishTalking() }
-        }
+        val ms = ChirpSynth.targetMs(text)
+        val usedVoice = ChirpSynth.hasVoice(voice)
+        val pcm = ChirpSynth.synth(if (usedVoice) voice else null, ms, System.nanoTime())
+        addChat(Sender.ME, text)
+        mode = Mode.LIME_TALKING
+        status = "라임이 말로 바꾸는 중…"
+        player.playPcm(pcm, ChirpSynth.OUT_SR) { finishTalking() }
     }
 
     // ---------------- 기능 2: 앵무새 소리 → 한국어 ----------------
@@ -322,103 +309,65 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
             return
         }
         val line = Phrases.pick(a.state)
-        addChat(Sender.LIME, line, a.describe())
+        addChat(Sender.LIME, line)
         speakAsLime(line)
     }
 
-    // ---------------- 라임이 소리 모음 ----------------
-    fun setUseMyVoiceOption(v: Boolean) {
-        useMyVoice = v
-        store.useMyVoice = v
-        if (v && voiceConflict) {
-            // 다시 켜면 한 번 더 시도해 봄
-            voiceConflict = false
-            store.voiceConflict = false
-        }
+    // ---------------- 라임이 사진 ----------------
+    private val avatarFile: File get() = File(ctx.filesDir, "avatar.jpg")
+
+    private fun loadAvatarFile(): ImageBitmap? = try {
+        if (avatarFile.exists()) BitmapFactory.decodeFile(avatarFile.absolutePath)?.asImageBitmap() else null
+    } catch (e: Exception) {
+        null
     }
 
-    fun toggleClipRecording() {
-        if (clipRecording) { stopClip(); return }
-        if (mode != Mode.IDLE) cancelAll()
-        stopClipPlayback()
-        val ok = clipRec.start(maxMs = 10000) { main.post { if (clipRecording) stopClip() } }
-        if (!ok) {
-            status = "마이크를 열 수 없어요"
-            return
-        }
-        clipRecording = true
-        startLevelPoll()
+    fun setAvatar(uri: Uri) {
+        status = "사진을 바꾸는 중…"
+        Thread {
+            val bmp = decodeScaled(uri, 600)
+            if (bmp != null) {
+                try {
+                    avatarFile.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                } catch (_: Exception) {}
+            }
+            main.post {
+                if (bmp != null) {
+                    avatar = bmp.asImageBitmap()
+                    status = IDLE_STATUS
+                } else {
+                    status = "사진을 불러오지 못했어요"
+                }
+            }
+        }.start()
     }
 
-    private fun stopClip() {
-        val pcm = Wav.trimSilence(clipRec.stop())
-        clipRecording = false
-        if (pcm.size < SAMPLE_RATE / 5) {
-            status = "소리가 너무 작거나 짧았어요. 라임이 가까이에서 다시 녹음해 주세요"
-            pendingClip = null
+    fun resetAvatar() {
+        try { avatarFile.delete() } catch (_: Exception) {}
+        avatar = null
+    }
+
+    private fun decodeScaled(uri: Uri, maxSide: Int): Bitmap? = try {
+        if (Build.VERSION.SDK_INT >= 28) {
+            val src = ImageDecoder.createSource(ctx.contentResolver, uri)
+            ImageDecoder.decodeBitmap(src) { decoder, info, _ ->
+                val w = info.size.width
+                val h = info.size.height
+                val scale = minOf(1f, maxSide.toFloat() / minOf(w, h).coerceAtLeast(1))
+                decoder.setTargetSize((w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1))
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }
         } else {
-            pendingClip = pcm
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            var sample = 1
+            while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+            ctx.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+            }
         }
-    }
-
-    fun previewPending() {
-        val p = pendingClip ?: return
-        player.playPcm(p, SAMPLE_RATE) {}
-    }
-
-    fun discardPending() {
-        player.stop()
-        pendingClip = null
-    }
-
-    fun savePending(name: String, mood: Mood) {
-        val p = pendingClip ?: return
-        player.stop()
-        val id = System.currentTimeMillis()
-        val fileName = "clip_$id.wav"
-        try {
-            Wav.write(File(store.soundDir, fileName), p)
-        } catch (e: Exception) {
-            status = "저장하지 못했어요"
-            return
-        }
-        val clip = SoundClip(
-            id = id,
-            name = name.ifBlank { "라임이 소리 ${sounds.size + 1}" },
-            mood = mood,
-            fileName = fileName,
-            createdAt = id,
-            durationMs = p.size * 1000L / SAMPLE_RATE
-        )
-        sounds.add(0, clip)
-        store.saveSounds(sounds)
-        pendingClip = null
-    }
-
-    fun playClip(c: SoundClip) {
-        if (playingClipId == c.id) { stopClipPlayback(); return }
-        if (mode != Mode.IDLE) cancelAll()
-        playingClipId = c.id
-        player.playFile(store.soundFile(c)) { if (playingClipId == c.id) playingClipId = null }
-    }
-
-    private fun stopClipPlayback() {
-        player.stop()
-        playingClipId = null
-    }
-
-    fun updateClip(c: SoundClip, name: String, mood: Mood) {
-        val i = sounds.indexOfFirst { it.id == c.id }
-        if (i < 0) return
-        sounds[i] = c.copy(name = name.ifBlank { c.name }, mood = mood)
-        store.saveSounds(sounds)
-    }
-
-    fun deleteClip(c: SoundClip) {
-        if (playingClipId == c.id) stopClipPlayback()
-        try { store.soundFile(c).delete() } catch (_: Exception) {}
-        sounds.removeAll { it.id == c.id }
-        store.saveSounds(sounds)
+    } catch (e: Exception) {
+        null
     }
 
     // ---------------- 공통 ----------------
@@ -431,10 +380,7 @@ class LimeController(private val ctx: Context) : TextToSpeech.OnInitListener {
         destroyRecognizer()
         stopVoiceCapture()
         limeRec.stop()
-        clipRec.stop()
-        clipRecording = false
         player.stop()
-        playingClipId = null
         tts?.stop()
         partial = ""
         mode = Mode.IDLE

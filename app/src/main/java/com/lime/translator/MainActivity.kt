@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : ComponentActivity() {
@@ -18,15 +19,22 @@ class MainActivity : ComponentActivity() {
         else lime.status = "마이크 권한이 있어야 라임이와 이야기할 수 있어요 (설정 > 앱 > 라임이 통역기 > 권한)"
     }
 
+    private val pickPhoto = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) lime.setAvatar(uri)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         lime = LimeController(applicationContext)
         setContent {
             LimeTheme {
-                when (lime.screen) {
-                    Screen.MAIN -> MainScreen(lime, ::withMic)
-                    Screen.SOUNDS -> SoundsScreen(lime, ::withMic)
-                }
+                MainScreen(
+                    lime,
+                    ::withMic,
+                    onPickPhoto = {
+                        pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
+                )
             }
         }
     }
